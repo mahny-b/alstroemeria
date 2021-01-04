@@ -20,6 +20,10 @@ if not "%ERRORLEVEL%"=="0" (
 rem メイン処理
 set CMD_FFPROBE=ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of default=nw=1 "%~1"
 
+rem ffprobeコマンドのリプライはこんな感じになので、それを分解して1行に出す。呼び出し元はfor-usebackq tokensで取る
+rem > ffprobe -v error ～ -of default=nw=1 "hoge.png"
+rem width=3840
+rem height=2140
 for /f "usebackq" %%a in (`!CMD_FFPROBE!`) do (
     set REPLY=%%a
     echo "!REPLY!" | findstr "width" > nul 2>&1
