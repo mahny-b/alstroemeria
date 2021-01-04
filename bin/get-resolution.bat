@@ -10,21 +10,34 @@ if "%1"=="" (
     exit /b 0
 )
 rem コマンドチェック
-where ffprobe2 > nul 2>&1
-if not "%ERRORLEVEL"=="0" (
-    echo command cannot be found. Make sure ffmpeg is installed correctly. / command=[ffprobe]
+set CMD_WHERE=where ffprobe
+%CMD_WHERE% > nul 2>&1
+if not "%ERRORLEVEL%"=="0" (
+    echo command cannot be found. Make sure ffmpeg is installed correctly. / command=[%CMD_WHERE%]
     exit /b 1
 )
-echo main!
-rem ------------------------------
-rem ヘルプ用メッセージ
-rem ------------------------------
-set FFPROBE_CMD=ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of default=nw=1 "%~1"
 
+rem メイン処理
+set CMD_FFPROBE=ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of default=nw=1 "%~1"
 
+for /f "usebackq" %%a in (`!CMD_FFPROBE!`) do (
+    set REPLY=%%a
+    echo "!REPLY!" | findstr "width" > nul 2>&1
+    set IS_WIDTH=!ERRORLEVEL!
+
+    echo "!REPLY!" | findstr "height" > nul 2>&1
+    set IS_HEIGHT=!ERRORLEVEL!
+
+    if "!IS_WIDTH!"=="0" (
+        set _AL_WIDTH=!REPLY:~6!
+    ) else if "!IS_HEIGHT!"=="0" (
+        set _AL_HEIGHT=!REPLY:~7!
+    )
+)
+echo !_AL_WIDTH! !_AL_HEIGHT!
 endlocal
 
-exit /b
+exit /b 0
 
 rem ------------------------------
 rem ヘルプ用メッセージ
