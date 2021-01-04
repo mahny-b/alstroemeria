@@ -19,9 +19,28 @@ if not "%1"=="start" (
 
         call :IS_SUPPERTED_EXT "!FILE_EXT!"
         if "!ERRORLEVEL!"=="1" (
-            set CONV_CMD=ffmpeg -i "!TARGET_FILE!" -loglevel warning -q 5 "!CONV_FILE!"
+            rem 解像度を取得する
+            for /f "usebackq tokens=1,2,3" %%b in (`get-resolution "!TARGET_FILE!"`) do (
+                set _AL_WIDTH=%%b
+                set _AL_HEIGHT=%%c
+            )
+            rem 解像度がフルHD以上ならリサイズオプションを作る
+            set CONV_SCALE=
+            if !_AL_HEIGHT! leq !_AL_WIDTH! (
+                if 1920 leq !_AL_WIDTH! (
+                    set CONV_SCALE=-vf "scale=1920:-1"
+                )
+            ) else (
+                if 1920 leq !_AL_HEIGHT! (
+                    set CONV_SCALE=-vf "scale=-1:1920"
+                )
+            )
+
+            rem 変換コマンドを組み立てて実行する
+            set CONV_CMD=ffmpeg -i "!TARGET_FILE!" !CONV_SCALE! -loglevel warning -q 5 "!CONV_FILE!"
             echo !CONV_CMD!
             !CONV_CMD!
+
             if "!ERRORLEVEL!"=="0" (
                 timeout /t 1 > nul
                 del /f "!TARGET_FILE!" > nul
