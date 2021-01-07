@@ -51,7 +51,7 @@ rem ------------------------------
     echo 環境変数:_AL_CUR_DIR
     echo     alstroemeriaコマンドを実行した時のカレントディレクトリを格納する。
     echo.
-    echo usage) ※バッチの中で
-    echo call "%%~dp0init" start
+    echo usage^) ※バッチの中で
+    echo     ^> call "%%~dp0init" start
     echo.
 exit /b

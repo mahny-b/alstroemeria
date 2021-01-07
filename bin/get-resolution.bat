@@ -49,11 +49,16 @@ rem ------------------------------
 :HELP_MSG
     echo.
     echo 指定した画像または動画ファイルの解像度を返す
-    echo get-resolution [FILE]
     echo.
-    echo ex)
-    echo > get-resolution hoge.jpg
-    echo width=640
-    echo height=480
+    echo usage^)
+    echo     get-resolution [FILE]
+    echo.
+    echo option^)
+    echo     FILE 画像または動画ファイル
+    echo.
+    echo ex^)
+    echo     ^> get-resolution hoge.jpg
+    echo     width=640
+    echo     height=480
     echo.
 exit /b

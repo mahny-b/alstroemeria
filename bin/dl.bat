@@ -34,10 +34,10 @@ rem ヘルプ用メッセージ
     echo 指定したURLから連番でファイルをダウンロードする
     echo dl [LAST_IMG_URL]
     echo.
-    echo LAST_IMG_URL
-    echo   そのURLの最後のファイルURL
+    echo option^)
+    echo     LAST_IMG_URL そのURLの最後のファイルURL
     echo.
-    echo ex: http://hoge.com/resources/1.jpg ～ http://hoge.com/10.jpg の10ファイルをダウンロードする
-    echo > dl http://hoge.com/resources/10.jpg
+    echo ex^) http://hoge.com/resources/1.jpg ～ http://hoge.com/10.jpg の10ファイルをダウンロードする
+    echo     ^> dl http://hoge.com/resources/10.jpg
     echo.
 exit /b

@@ -79,6 +79,8 @@ rem ------------------------------
 :HELP_MSG
     echo.
     echo カレントディレクトリ内にある特殊形式jpgをwindowsで読めるjpgに変換する
-    echo convjpg start
+    echo.
+    echo usage^)
+    echo     ^> convjpg start
     echo.
 exit /b
