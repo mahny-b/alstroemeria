@@ -32,6 +32,8 @@ rem ------------------------------
 :HELP_MSG
     echo.
     echo alstroemeria で利用できるコマンド一覧を表示します。
-    echo ahelp list
+    echo.
+    echo usage^)
+    echo     ^> ahelp list
     echo.
 exit /b
