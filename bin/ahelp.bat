@@ -3,18 +3,25 @@ setlocal enabledelayedexpansion
 
 rem 初期処理用バッチを呼んでホームディレクトリ等の情報を読み込んでおく
 call "%~dp0init" start
+rem echo _AL_HOME=!_AL_HOME!
+rem echo _AL_CUR_DIR=!_AL_CUR_DIR!
 
 rem 引数チェック
 if not "%1"=="list" (
     call :HELP_MSG
     exit /b 0
-) else (
-    set LAST_IMG_URL=%1
-    for /f "usebackq tokens=1,2" %%a in (`dir /b`) do (
-        set FILE_NAME=%%~na
-        echo !FILE_NAME!
-    )
 )
+
+rem ------------------------------
+rem メイン処理
+rem ------------------------------
+cd /d "!_AL_HOME!"
+
+for /f "usebackq" %%a in (`dir /b`) do (
+    echo %%~na
+)
+
+cd /d "!_AL_CUR_DIR!"
 endlocal
 
 exit /b
