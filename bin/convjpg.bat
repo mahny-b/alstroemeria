@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
-rem åˆæœŸå‡¦ç†ç”¨ãƒãƒƒãƒã‚’å‘¼ã‚“ã§ãƒ›ãƒ¼ãƒ ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªç­‰ã®æƒ…å ±ã‚’èª­ã¿è¾¼ã‚“ã§ãŠã
+rem ‰Šúˆ——pƒoƒbƒ`‚ðŒÄ‚ñ‚Åƒz[ƒ€ƒfƒBƒŒƒNƒgƒŠ“™‚Ìî•ñ‚ð“Ç‚Ýž‚ñ‚Å‚¨‚­
 call "%~dp0init" start
 
-rem å¼•æ•°ãƒã‚§ãƒƒã‚¯
+rem ˆø”ƒ`ƒFƒbƒN
 if not "%1"=="start" (
     call :HELP_MSG
     exit /b 0
@@ -19,12 +19,12 @@ if not "%1"=="start" (
 
         call :IS_SUPPERTED_EXT "!FILE_EXT!"
         if "!ERRORLEVEL!"=="1" (
-            rem è§£åƒåº¦ã‚’å–å¾—ã™ã‚‹
+            rem ‰ð‘œ“x‚ðŽæ“¾‚·‚é
             for /f "usebackq tokens=1,2" %%b in (`get-resolution "!TARGET_FILE!"`) do (
                 set _AL_WIDTH=%%b
                 set _AL_HEIGHT=%%c
             )
-            rem è§£åƒåº¦ãŒãƒ•ãƒ«HDä»¥ä¸Šãªã‚‰ãƒªã‚µã‚¤ã‚ºã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚’ä½œã‚‹
+            rem ‰ð‘œ“x‚ªƒtƒ‹HDˆÈã‚È‚çƒŠƒTƒCƒYƒIƒvƒVƒ‡ƒ“‚ðì‚é
             set CONV_SCALE=
             if !_AL_HEIGHT! leq !_AL_WIDTH! (
                 if 1920 leq !_AL_WIDTH! (
@@ -36,7 +36,7 @@ if not "%1"=="start" (
                 )
             )
 
-            rem å¤‰æ›ã‚³ãƒžãƒ³ãƒ‰ã‚’çµ„ã¿ç«‹ã¦ã¦å®Ÿè¡Œã™ã‚‹
+            rem •ÏŠ·ƒRƒ}ƒ“ƒh‚ð‘g‚Ý—§‚Ä‚ÄŽÀs‚·‚é
             set CONV_CMD=ffmpeg -i "!TARGET_FILE!" !CONV_SCALE! -loglevel warning -q 5 "!CONV_FILE!"
             echo !CONV_CMD!
             !CONV_CMD!
@@ -58,9 +58,9 @@ endlocal
 exit /b
 
 rem ------------------------------
-rem ã‚µãƒãƒ¼ãƒˆã™ã‚‹æ‹¡å¼µå­ã‹ã©ã†ã‹ã‚’è¿”ã™
-rem [0] æ‹¡å¼µå­
-rem ret: 0: ã‚µãƒãƒ¼ãƒˆã—ãªã„ / 1: ï½žã™ã‚‹
+rem ƒTƒ|[ƒg‚·‚éŠg’£Žq‚©‚Ç‚¤‚©‚ð•Ô‚·
+rem [0] Šg’£Žq
+rem ret: 0: ƒTƒ|[ƒg‚µ‚È‚¢ / 1: `‚·‚é
 rem ------------------------------
 :IS_SUPPERTED_EXT
     setlocal enabledelayedexpansion
@@ -74,11 +74,11 @@ rem ------------------------------
 exit /b %ret%
 
 rem ------------------------------
-rem ãƒ˜ãƒ«ãƒ—ç”¨ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸
+rem ƒwƒ‹ƒv—pƒƒbƒZ[ƒW
 rem ------------------------------
 :HELP_MSG
     echo.
-    echo ã‚«ãƒ¬ãƒ³ãƒˆãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªå†…ã«ã‚ã‚‹ç‰¹æ®Šå½¢å¼jpgã‚’windowsã§èª­ã‚ã‚‹jpgã«å¤‰æ›ã™ã‚‹
+    echo ƒJƒŒƒ“ƒgƒfƒBƒŒƒNƒgƒŠ“à‚É‚ ‚é“ÁŽêŒ`Ž®jpg‚ðwindows‚Å“Ç‚ß‚éjpg‚É•ÏŠ·‚·‚é
     echo.
     echo usage^)
     echo     ^> convjpg start
