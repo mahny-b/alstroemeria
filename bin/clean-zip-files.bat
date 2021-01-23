@@ -8,9 +8,6 @@ rem 引数チェック
 if /i not "%1"=="start" (
     call :HELP_MSG
     exit /b 0
-) else (
-    set INPUT_FILE=%~1
-    set INPUT_EXT=%~x1
 )
 
 rem 前提コマンドチェック
