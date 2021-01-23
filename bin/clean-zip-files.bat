@@ -26,11 +26,10 @@ for /f "usebackq delims=" %%a in (`dir /b ^| findstr /i /r /c:"\.zip$" /c:"\.7z$
     echo !CMD!
     !CMD! > nul
 )
-exit /b 0
 
 endlocal
 
-exit /b
+exit /b 0
 
 rem ------------------------------
 rem ヘルプ用メッセージ
