@@ -10,44 +10,39 @@ if not "%1"=="start" (
     exit /b 0
 ) else (
     set LAST_IMG_URL=%1
-    for /f "usebackq" %%a in (`dir /b`) do (
+    for /f "usebackq delims=" %%a in (`dir /b ^| findstr /i /r /c:"\.png$" /c:"\.jpg$"`) do (
         set FILE_NAME=%%~na
         set FILE_EXT=%%~xa
         set TARGET_FILE=%%a
         set CONV_FILE=convjpg_!FILE_NAME!.jpg
         set RENAMED_FILE=!FILE_NAME!.jpg
 
-        call :IS_SUPPERTED_EXT "!FILE_EXT!"
-        if "!ERRORLEVEL!"=="1" (
-            rem 解像度を取得する
-            for /f "usebackq tokens=1,2" %%b in (`get-resolution "!TARGET_FILE!"`) do (
-                set _AL_WIDTH=%%b
-                set _AL_HEIGHT=%%c
+        rem 解像度を取得する
+        for /f "usebackq tokens=1,2" %%b in (`get-resolution "!TARGET_FILE!"`) do (
+            set _AL_WIDTH=%%b
+            set _AL_HEIGHT=%%c
+        )
+        rem 解像度がフルHD以上ならリサイズオプションを作る
+        set CONV_SCALE=
+        if !_AL_HEIGHT! leq !_AL_WIDTH! (
+            if 1920 leq !_AL_WIDTH! (
+                set CONV_SCALE=-vf "scale=1920:-1"
             )
-            rem 解像度がフルHD以上ならリサイズオプションを作る
-            set CONV_SCALE=
-            if !_AL_HEIGHT! leq !_AL_WIDTH! (
-                if 1920 leq !_AL_WIDTH! (
-                    set CONV_SCALE=-vf "scale=1920:-1"
-                )
-            ) else (
-                if 1920 leq !_AL_HEIGHT! (
-                    set CONV_SCALE=-vf "scale=-1:1920"
-                )
+        ) else (
+            if 1920 leq !_AL_HEIGHT! (
+                set CONV_SCALE=-vf "scale=-1:1920"
             )
+        )
 
-            rem 変換コマンドを組み立てて実行する
-            set CONV_CMD=ffmpeg -i "!TARGET_FILE!" !CONV_SCALE! -loglevel warning -q 5 "!CONV_FILE!"
-            echo !CONV_CMD!
-            !CONV_CMD!
+        rem 変換コマンドを組み立てて実行する
+        set CONV_CMD=ffmpeg -i "!TARGET_FILE!" !CONV_SCALE! -loglevel warning -q 5 "!CONV_FILE!"
+        echo !CONV_CMD!
+        !CONV_CMD!
 
-            if "!ERRORLEVEL!"=="0" (
-                timeout /t 1 > nul
-                del /f "!TARGET_FILE!" > nul
-                move /y "!CONV_FILE!" "!RENAMED_FILE!" > nul
-            ) else (
-                echo skipped. / file=[!TARGET_FILE!]
-            )
+        if "!ERRORLEVEL!"=="0" (
+            timeout /t 1 > nul
+            del /f "!TARGET_FILE!" > nul
+            move /y "!CONV_FILE!" "!RENAMED_FILE!" > nul
         ) else (
             echo skipped. / file=[!TARGET_FILE!]
         )
