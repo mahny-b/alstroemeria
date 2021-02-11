@@ -17,7 +17,7 @@ rem ƒƒCƒ“ˆ—
 rem ------------------------------
 cd /d "!_AL_HOME!"
 
-for /f "usebackq" %%a in (`dir /b`) do (cd
+for /f "usebackq" %%a in (`dir /b`) do (
     echo %%~na
 )
 
