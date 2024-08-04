@@ -163,7 +163,7 @@ $inputFolder = Resolve-Path $i
 $outputFolder = if (-not $o) {
     $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
 } else {
-    $tempFolder = Join-Path -Path $i -ChildPath "lite"
+    $tempFolder = Join-Path -Path $i -ChildPath "conv"
     $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($tempFolder)
 }
 
