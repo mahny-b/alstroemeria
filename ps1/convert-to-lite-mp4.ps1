@@ -11,8 +11,20 @@
 .PARAMETER i
     入力フォルダ（相対パス or 絶対パス）
 
+.PARAMETER r
+    横幅解像度（初期値1280）
+    HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
+
+.PARAMETER b
+    ビットレート（accで使えるものは以下の通り）
+    192000, 160000, 128000, 96000, 80000, 64000
+
+.PARAMETER s
+    サンプリングレート（accで使えるものは以下の通り）
+    48000, 44100, 32000, 22050, 16000
+
 .PARAMETER o
-    出力フォルダ（相対パス or 絶対パス。存在しない場合は新規に作成する）
+    出力フォルダ（相対パス or 絶対パス。存在しない場合は新規に作成する。未指定時は、入力フォルダ直下に「conv」を作成する）
 
 .NOTES
     author: mahny
@@ -20,9 +32,11 @@
 #>
 param (
     [string]$i,
+    [int]$r = 1280,
+    [int]$b = 64000,
+    [int]$s = 16000,
     [string]$o
 )
-
 
 
 #----------------------------
@@ -45,27 +59,29 @@ $GPU_ACCEL = "cuda"
 $VIDEO_CODEC = "h264_nvenc"
 
 # 汎用で指定できるプリセット: (エンコ速度重視⇐) fast,medium,slow,veryslow （⇒ファイルサイズ重視）
-# nDIVIA専用プリセット: default, hp(高品質), hq(高速エンコ), bd(非推奨), ll(非推奨), llhp(非推奨), llhq(非推奨), lossless(非推奨), losslesshq(非推奨)
+# nDIVIA専用プリセット: default, hp(高速縁故), hq(高品質), bd(非推奨), ll(非推奨), llhp(非推奨), llhq(非推奨), lossless(非推奨), losslesshq(非推奨)
 # $VIDEO_PRESET = "veryslow"
 $VIDEO_PRESET = "hq"
 
 # 音声コーデック
 $AUDIO_CODEC = "aac"
 
-# 動画の長辺（横幅）のピクセル数
-# HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
-$VIDEO_SCALE = 1280
+
+#----------------------------
+# 準定数定義（触らなくていい）
+#----------------------------
+# ビデオスケール（変換後の動画横幅）
+$videoScale = $r
 
 # mahnyはバカ耳なので低音質設定です。我慢できない人は適宜上げてください。
 # ビットレート
 # 192000, 160000, 128000, 96000, 80000, 64000
-$AUDIO_BITRATE_THRESHOLD = 64000
-$AUDIO_BITRATE_TARGET = "$([Math]::Floor(${AUDIO_BITRATE_THRESHOLD} / 1000))k"
+$audioBitrateThreshold = $b
+$audioBitrateTarget = "$([Math]::Floor(${audioBitrateThreshold} / 1000))k"
 
 # サンプリングレート
 # 48000, 44100, 32000, 22050, 16000
-$AUDIO_SAMPLE_RATE_THRESHOLD = 16000
-
+$audioSampleRateThreshold = $s
 
 #----------------------------
 # 関数定義
@@ -138,13 +154,18 @@ function Get-GameVideoCRF {
 #----------------------------
 # メイン処理
 #----------------------------
-if (-not $i -or -not $o) {
+if (-not $i) {
     Show-Help
     exit
 }
 
 $inputFolder = Resolve-Path $i
-$outputFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
+$outputFolder = if (-not $o) {
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
+} else {
+    $tempFolder = Join-Path -Path $i -ChildPath "lite"
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($tempFolder)
+}
 
 if (-not (Test-Path $inputFolder)) {
     Write-Host "入力フォルダが存在しません: $inputFolder"
@@ -171,20 +192,20 @@ $files | ForEach-Object {
 
     # スケールフィルターの設定
     $scaleFilter = if ([int]$width -lt [int]$height) {
-        "transpose=2,scale=${VIDEO_SCALE}:-2"
+        "transpose=2,scale=${videoScale}:-2"
     } else {
-        "scale=${VIDEO_SCALE}:-2"
+        "scale=${videoScale}:-2"
     }
 
     $audioRate = (ffprobe -v error -select_streams a:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 $input)
-    $audioBitrate = if ([int]$audioRate -ge $AUDIO_BITRATE_THRESHOLD) { $AUDIO_BITRATE_TARGET } else { $audioRate }
+    $audioBitrate = if ([int]$audioRate -ge $audioBitrateThreshold) { $audioBitrateTarget } else { $audioRate }
     
     # ビデオビットレートの取得
     $videoBitrateInfo = Get-VideoBitrate -width $width -height $height
     $videoCrf = Get-GameVideoCRF -width $width -height $height
 
     $audioSampleRate = (ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 $input)
-    $audioSampleRate = if ([int]$audioSampleRate -gt $AUDIO_SAMPLE_RATE_THRESHOLD) { "${AUDIO_SAMPLE_RATE_THRESHOLD}" } else { $audioSampleRate }
+    $audioSampleRate = if ([int]$audioSampleRate -gt $audioSampleRateThreshold) { "${audioSampleRateThreshold}" } else { $audioSampleRate }
     
     Write-Host "変換中 (${currentFile}/${totalFiles}): $($_.Name)"
     $ffmpegArgs = @(
