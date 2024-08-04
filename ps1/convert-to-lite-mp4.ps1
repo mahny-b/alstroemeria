@@ -1,0 +1,224 @@
+<#
+.SYNOPSIS
+    動画ファイル一括軽量化スクリプト
+
+.DESCRIPTION
+    任意のフォルダ配下にある動画ファイルを、そこそこの品質に落として軽量化変換する。
+    また、縦長の動画は、反時計回りに90度回転させます。
+    本スクリプトは「ffmpeg」を使用する。予めインストールし、Windowsパスを通して置く事
+    あなたの環境に合わせて、「変換設定の定数」のセクションを修正して下さい。
+
+.PARAMETER i
+    入力フォルダ（相対パス or 絶対パス）
+
+.PARAMETER o
+    出力フォルダ（相対パス or 絶対パス。存在しない場合は新規に作成する）
+
+.NOTES
+    author: mahny
+
+#>
+param (
+    [string]$i,
+    [string]$o
+)
+
+
+
+#----------------------------
+# 変換設定の定数
+#----------------------------
+# 本スクリプトで変換対象にするファイル拡張子の正規表現パターン
+$INPUT_REGEXP = "\.(mp4|mov|mpg|mpeg|avi|mkv|webm|flv|3gp)$"
+
+# 変換後のファイル拡張子
+$OUTPUT_FORMAT = "mp4"
+
+# GPUアクセラレータ。グラボを積んでる人は変えてみて。対象がない場合は空文字（CPU利用）にする事。
+# NO USE:(空文字), nVIDIA:cuda, AMD:amf, Intel:qsv
+# $GPU_ACCEL = ""
+$GPU_ACCEL = "cuda"
+
+# ビデオコーデック
+# CPU:libx264, nVIDIA:h264_nvenc, AMD:h264_amf, Intel:h264_qsv
+# $VIDEO_CODEC = "libx264"
+$VIDEO_CODEC = "h264_nvenc"
+
+# 汎用で指定できるプリセット: (エンコ速度重視⇐) fast,medium,slow,veryslow （⇒ファイルサイズ重視）
+# nDIVIA専用プリセット: default, hp(高品質), hq(高速エンコ), bd(非推奨), ll(非推奨), llhp(非推奨), llhq(非推奨), lossless(非推奨), losslesshq(非推奨)
+# $VIDEO_PRESET = "veryslow"
+$VIDEO_PRESET = "hq"
+
+# 音声コーデック
+$AUDIO_CODEC = "aac"
+
+# 動画の長辺（横幅）のピクセル数
+# HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
+$VIDEO_SCALE = 1280
+
+# mahnyはバカ耳なので低音質設定です。我慢できない人は適宜上げてください。
+# ビットレート
+# 192000, 160000, 128000, 96000, 80000, 64000
+$AUDIO_BITRATE_THRESHOLD = 64000
+$AUDIO_BITRATE_TARGET = "$([Math]::Floor(${AUDIO_BITRATE_THRESHOLD} / 1000))k"
+
+# サンプリングレート
+# 48000, 44100, 32000, 22050, 16000
+$AUDIO_SAMPLE_RATE_THRESHOLD = 16000
+
+
+#----------------------------
+# 関数定義
+#----------------------------
+
+# ヘルプを表示する
+function Show-Help {
+    Write-Host @"
+指定フォルダの動画ファイルを、一括で軽量化します。
+
+usage)
+    convert-to-lite-mp4 -i INPUT_FOLDER -o OUTPUT_FOLDER
+
+options)
+    -i     入力フォルダ
+    -o     出力フォルダ
+
+"@
+}
+
+
+# 解像度に応じたビットレート取得する
+function Get-VideoBitrate {
+    param (
+        [int]$width,
+        [int]$height
+    )
+    $pixels = $width * $height
+    $bitrate = switch ($pixels) {
+        {$_ -ge 3840 * 2160} { "16M"; break } # 4K
+        {$_ -ge 2560 * 1440} { "10M"; break } # 2K
+        {$_ -ge 1920 * 1080} { "6M"; break }  # Full HD
+        {$_ -ge 1280 * 720}  { "4M"; break }  # HD
+        default { "2M" }                      # SD以下
+    }
+    
+    if ($bitrate -notmatch '^\d+M$') {
+        throw "Invalid bitrate format: $bitrate"
+    }
+
+    $bitrateValue = [int]($bitrate.TrimEnd('M'))
+    $bufsize = "$([Math]::Round($bitrateValue * 2))M"
+
+    return [PSCustomObject]@{
+        Bitrate = $bitrate
+        Bufsize = $bufsize
+    }
+}
+
+
+# 解像度からCRFを取得する
+function Get-GameVideoCRF {
+    param (
+        [int]$width,
+        [int]$height
+    )
+    
+    $pixels = $width * $height
+    
+    if ($pixels -ge 2073600) {  # 1920x1080以上
+        return 27
+    } elseif ($pixels -ge 921600) {  # 1280x720以上
+        return 26
+    } else {
+        return 25
+    }
+}
+
+
+#----------------------------
+# メイン処理
+#----------------------------
+if (-not $i -or -not $o) {
+    Show-Help
+    exit
+}
+
+$inputFolder = Resolve-Path $i
+$outputFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
+
+if (-not (Test-Path $inputFolder)) {
+    Write-Host "入力フォルダが存在しません: $inputFolder"
+    exit
+}
+
+if (-not (Test-Path $outputFolder)) {
+    New-Item -ItemType Directory -Path $outputFolder | Out-Null
+}
+
+# 処理するファイル数を確認
+$files = Get-ChildItem -Path $inputFolder | Where-Object { $_.Extension -match "${INPUT_REGEXP}" }
+$totalFiles = $files.Count
+$currentFile = 0
+Write-Host "検出されたファイル数: $totalFiles"
+
+$files | ForEach-Object {
+    $currentFile++
+    $input = $_.FullName
+    $output = Join-Path $outputFolder $_.Name
+    
+    $videoInfo = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 $input
+    $width, $height = $videoInfo.Split(',')
+
+    # スケールフィルターの設定
+    $scaleFilter = if ([int]$width -lt [int]$height) {
+        "transpose=2,scale=${VIDEO_SCALE}:-2"
+    } else {
+        "scale=${VIDEO_SCALE}:-2"
+    }
+
+    $audioRate = (ffprobe -v error -select_streams a:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 $input)
+    $audioBitrate = if ([int]$audioRate -ge $AUDIO_BITRATE_THRESHOLD) { $AUDIO_BITRATE_TARGET } else { $audioRate }
+    
+    # ビデオビットレートの取得
+    $videoBitrateInfo = Get-VideoBitrate -width $width -height $height
+    $videoCrf = Get-GameVideoCRF -width $width -height $height
+
+    $audioSampleRate = (ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 $input)
+    $audioSampleRate = if ([int]$audioSampleRate -gt $AUDIO_SAMPLE_RATE_THRESHOLD) { "${AUDIO_SAMPLE_RATE_THRESHOLD}" } else { $audioSampleRate }
+    
+    Write-Host "変換中 (${currentFile}/${totalFiles}): $($_.Name)"
+    $ffmpegArgs = @(
+        if (${GPU_ACCEL} -ne "") { "-hwaccel", $GPU_ACCEL }
+        "-i", "`"$input`""
+        "-vf", $scaleFilter
+        "-c:v", $VIDEO_CODEC
+        "-maxrate", $videoBitrateInfo.Bitrate
+        "-bufsize", $videoBitrateInfo.Bufsize
+        "-preset", $VIDEO_PRESET
+        if (${GPU_ACCEL} -ne "") { "-crf", $videoCrf }
+        "-c:a", $AUDIO_CODEC
+        "-b:a", $audioBitrate
+        "-ar", $audioSampleRate
+        "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
+    )
+
+    $processArgs = @{
+        FilePath = "ffmpeg"
+        ArgumentList = $ffmpegArgs
+        NoNewWindow = $true
+        PassThru = $true
+        Wait = $true
+    }
+
+    # 変換処理実行
+    Write-Host "command. / $ffmpegPath $($ffmpegArgs -join ' ')"
+    $process = Start-Process @processArgs
+
+    if ($process.ExitCode -ne 0) {
+        Write-Host "変換に失敗しました: $($_.Name)"
+    } else {
+        Write-Host "変換が成功しました: $($_.Name)"
+    }
+}
+
+Write-Host "変換が完了しました。"
