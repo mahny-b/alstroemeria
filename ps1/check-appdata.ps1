@@ -30,8 +30,8 @@
     現在のユーザーのAppDataフォルダを分析し、100MB以上のフォルダを表示します。
 
 .NOTES
-    Author: Your Name
-    Date: Current Date
+    Author: mahny
+    Date: 2024-09-08
     Requires: PowerShell 5.0 or later
 #>
 
