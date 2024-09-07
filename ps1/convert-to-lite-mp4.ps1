@@ -161,16 +161,19 @@ if (-not $i) {
 
 $inputFolder = Resolve-Path $i
 $outputFolder = if (-not $o) {
-    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
-} else {
-    $tempFolder = Join-Path -Path $i -ChildPath "conv"
+    $tempFolder = Join-Path -Path "$inputFolder" -ChildPath "conv"
     $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($tempFolder)
+} else {
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($o)
 }
 
 if (-not (Test-Path $inputFolder)) {
     Write-Host "入力フォルダが存在しません: $inputFolder"
     exit
 }
+Write-Host "入力フォルダ: $inputFolder"
+Write-Host "出力フォルダ: $outputFolder"
+
 
 if (-not (Test-Path $outputFolder)) {
     New-Item -ItemType Directory -Path $outputFolder | Out-Null
