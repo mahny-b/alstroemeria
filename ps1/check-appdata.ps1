@@ -1,8 +1,44 @@
+<#
+.SYNOPSIS
+    AppDataフォルダのサイズ分析スクリプト
+
+.DESCRIPTION
+    指定されたユーザー（または現在のユーザー）のAppDataフォルダ内のサブフォルダのサイズを分析し、
+    指定されたサイズ以上のフォルダを表示します。シンボリックリンクも検出し、特別に表示します。
+    Local、LocalLow、Roamingの各フォルダを個別に分析します。
+
+.PARAMETER d
+    デフォルト設定を使用します。現在のユーザーのAppDataを分析し、500MB以上のフォルダを表示します。
+
+.PARAMETER u
+    分析対象のユーザー名を指定します。指定しない場合は現在のユーザーが対象となります。
+    他のユーザーを指定する場合は、管理者権限で実行する必要があります。
+
+.PARAMETER s
+    表示する最小サイズをMB単位で指定します。指定しない場合は500MBが使用されます。
+
+.EXAMPLE
+    .\check-appdata.ps1 -d
+    現在のユーザーのAppDataフォルダを分析し、500MB以上のフォルダを表示します。
+
+.EXAMPLE
+    .\check-appdata.ps1 -u JohnDoe -s 1000
+    ユーザーJohnDoeのAppDataフォルダを分析し、1GB以上のフォルダを表示します。
+
+.EXAMPLE
+    .\check-appdata.ps1 -s 100
+    現在のユーザーのAppDataフォルダを分析し、100MB以上のフォルダを表示します。
+
+.NOTES
+    Author: Your Name
+    Date: Current Date
+    Requires: PowerShell 5.0 or later
+#>
+
 param (
     [switch]$d,
     [string]$u,
-    [int]$s,
-    [switch]$h
+    [int]$s
 )
 
 function Show-Help {
