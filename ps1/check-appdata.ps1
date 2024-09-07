@@ -1,22 +1,20 @@
 param (
+    [switch]$d,
     [string]$u,
-    [int]$s = 500
+    [int]$s,
+    [switch]$h
 )
 
 function Show-Help {
+    Write-Host "AppDataフォルダのサイズ分析を行います。"
     Write-Host ""
-    Write-Host "AppData Size Analysis Script"
-    Write-Host "Usage: .\script_name.ps1 [-u <username>] [-s <size>]"
+    Write-Host "usage)"
+    Write-Host "    check-appdata.ps1 [-d] [-u USER] [-s SIZE]"
     Write-Host ""
-    Write-Host "Parameters:"
-    Write-Host "  -u    Optional. Specifies the user whose AppData to analyze. If not provided, uses the current user."
-    Write-Host "  -s    Optional. Specifies the minimum folder size in MB to display. Default is 500 MB."
-    Write-Host ""
-    Write-Host "Examples:"
-    Write-Host "  .\script_name.ps1"
-    Write-Host "  .\script_name.ps1 -u JohnDoe"
-    Write-Host "  .\script_name.ps1 -s 1000"
-    Write-Host "  .\script_name.ps1 -u JohnDoe -s 1000"
+    Write-Host "options)"
+    Write-Host "    -d     デフォルト設定を使用 (現在のユーザー、最小サイズ 500MB)"
+    Write-Host "    -u     分析対象のユーザー名を指定"
+    Write-Host "    -s     表示する最小サイズ (MB) を指定"
     Write-Host ""
     exit
 }
@@ -34,12 +32,10 @@ function Get-AppDataPath {
     param (
         [string]$Username
     )
-    if ([string]::IsNullOrEmpty($Username) -or $Username -eq $currentUsername) {
-        # 現在のユーザーの AppData パスを取得
+    if ([string]::IsNullOrEmpty($Username) -or $Username -eq (Get-CurrentUsername)) {
         return Split-Path $env:APPDATA -Parent
     }
     else {
-        # 指定されたユーザーの AppData パスを取得
         $userProfile = (Get-CimInstance -ClassName Win32_UserProfile | Where-Object { $_.LocalPath.split('\')[-1] -eq $Username }).LocalPath
         if ($userProfile) {
             return Join-Path $userProfile "AppData"
@@ -60,7 +56,7 @@ function Get-FolderInfo {
         $targetPath = $item.Target
         return [PSCustomObject]@{
             Name = $item.Name
-            SizeMB = 0
+            SizeMB = 0.00
             FullPath = "$($item.Name) -> $targetPath"
         }
     } else {
@@ -75,17 +71,19 @@ function Get-FolderInfo {
     }
 }
 
-# メイン処理開始
-
-# 引数チェックとヘルプ表示
-if ($args.Count -gt 0 -and (-not $u -and -not $s)) {
+# ヘルプ表示または不正なパラメータ指定時の処理
+if ($h -or (-not $d -and -not $u -and -not $s)) {
     Show-Help
 }
 
-$currentUsername = Get-CurrentUsername
+# デフォルト値の設定
+if ($d -or (-not $u -and -not $s)) {
+    $u = Get-CurrentUsername
+    $s = 500
+}
 
 # 管理者権限チェック
-if ($u -and ($u -ne $currentUsername)) {
+if ($u -and ($u -ne (Get-CurrentUsername))) {
     if (-not (Test-Admin)) {
         Write-Error "他のユーザーのAppDataにアクセスするには管理者権限が必要です。スクリプトを管理者として実行してください。"
         exit
@@ -113,4 +111,3 @@ foreach ($folder in $appDataFolders) {
         Expression = { $_.FullPath }
     }
 }
-
