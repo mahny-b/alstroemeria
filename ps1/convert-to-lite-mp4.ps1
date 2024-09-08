@@ -35,7 +35,8 @@ param (
     [int]$r = 1280,
     [int]$b = 64000,
     [int]$s = 16000,
-    [string]$o
+    [string]$o,
+    [switch]$d
 )
 
 
@@ -133,7 +134,7 @@ function Get-VideoBitrate {
 
 
 # 解像度からCRFを取得する
-function Get-GameVideoCRF {
+function Get-VideoCRF {
     param (
         [int]$width,
         [int]$height
@@ -147,6 +148,57 @@ function Get-GameVideoCRF {
         return 26
     } else {
         return 25
+    }
+}
+
+
+# 指定したプロセスを停止する。停止成功、または停止済みの場合はtrueを返す
+function Stop-FfmpegProcess {
+    param (
+        [int]$ProcessId,
+        [int]$TimeoutSeconds = 3
+    )
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) {
+        Write-Host "ffmpegプロセス(PID: $ProcessId)は既に停止済みです。"
+        return $true
+    }
+    
+    # 通常の終了を待つ
+    $process | Wait-Process -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
+    if (!$process.HasExited) {
+        # Terminateを試みる
+        Write-Host "ffmpegプロセス(PID: $ProcessId)の終了をします。"
+        $process.CloseMainWindow()
+        $process | Wait-Process -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
+        
+        if (!$process.HasExited) {
+            # 強制終了
+            Write-Host "ffmpegプロセス(PID: $ProcessId)を強制終了します。"
+            Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+            $process | Wait-Process -Timeout 2 -ErrorAction SilentlyContinue
+        }
+    }
+    $ret = $process.HasExited
+    Write-Host "ffmpegプロセス(PID: $ProcessId)を" + ($ret ? "終了しました。" : "終了出来ませんでした。")
+    return $ret
+}
+
+
+# 指定した動画ファイルを削除する
+function Remove-ConvertedVideo {
+    param (
+        [string]$file
+    )
+    try {
+        [System.IO.File]::Delete($file)
+        Write-Host "ファイルを削除しました: ""$file"""
+        return $true
+    }
+    catch {
+        Write-Host "削除に失敗しました: ""$file"""
+        Write-Host "エラー: $($_.Exception.Message)"
+        return $false
     }
 }
 
@@ -185,6 +237,7 @@ $totalFiles = $files.Count
 $currentFile = 0
 Write-Host "検出されたファイル数: $totalFiles"
 
+# 変換処理
 $files | ForEach-Object {
     $currentFile++
     $input = $_.FullName
@@ -205,12 +258,12 @@ $files | ForEach-Object {
     
     # ビデオビットレートの取得
     $videoBitrateInfo = Get-VideoBitrate -width $width -height $height
-    $videoCrf = Get-GameVideoCRF -width $width -height $height
+    $videoCrf = Get-VideoCRF -width $width -height $height
 
     $audioSampleRate = (ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 $input)
     $audioSampleRate = if ([int]$audioSampleRate -gt $audioSampleRateThreshold) { "${audioSampleRateThreshold}" } else { $audioSampleRate }
     
-    Write-Host "変換中 (${currentFile}/${totalFiles}): $($_.Name)"
+    Write-Host "変換中 (${currentFile}/${totalFiles}) / ""$($_.Name)"""
     $ffmpegArgs = @(
         if (${GPU_ACCEL} -ne "") { "-hwaccel", $GPU_ACCEL }
         "-i", "`"$input`""
@@ -239,9 +292,20 @@ $files | ForEach-Object {
     $process = Start-Process @processArgs
 
     if ($process.ExitCode -ne 0) {
-        Write-Host "変換に失敗しました: $($_.Name)"
-    } else {
-        Write-Host "変換が成功しました: $($_.Name)"
+        Write-Error "変換に失敗しました / ""$($_.Name)"""
+        exit 1
+    }
+
+    Write-Host "変換が成功しました / ""$($_.Name)"""
+    if ($d) {
+        if (-not (Stop-FfmpegProcess -ProcessId $process.Id)) {
+            Write-Error "ffmpegプロセスの終了に失敗しました: file=[""$($_.Name)""], pid=[$($process.Id)]"
+            exit 1
+        }
+        if (-not (Remove-ConvertedVideo -file $input)) {
+            Write-Error "ファイルの削除に失敗しました: ""$($_.Name)"""
+            exit 1
+        }
     }
 }
 
