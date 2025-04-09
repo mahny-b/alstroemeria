@@ -14,10 +14,12 @@ if "%1"=="" (
     )
 )
 
+echo image count: !IMG_COUNT!
+
 rem ダウンロード処理
 for /l %%i in (1,1,!IMG_COUNT!) do (
     set idx=00%%i
-    set DL_FILE=!BASE_URL!/%%i.!IMG_EXT!
+    set DL_FILE=!BASE_URL!/!idx:~-3!.!IMG_EXT!
     set NEW_FILE=!idx:~-3!.!IMG_EXT!
 
     set WGET_CMD=powershell -c "wget -Uri '!DL_FILE!' -OutFile '!NEW_FILE!'"

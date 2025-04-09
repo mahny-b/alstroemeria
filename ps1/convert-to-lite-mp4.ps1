@@ -91,14 +91,25 @@ $audioSampleRateThreshold = $s
 # ヘルプを表示する
 function Show-Help {
     Write-Host @"
-指定フォルダの動画ファイルを、一括で軽量化します。
+指定フォルダの動画ファイルを一括で軽量化します。
 
 usage)
-    convert-to-lite-mp4 -i INPUT_FOLDER -o OUTPUT_FOLDER
+    convert-to-lite-mp4 [オプション]
 
 options)
-    -i     入力フォルダ
-    -o     出力フォルダ
+    -i <INPUT_FOLDER>   入力フォルダを指定 (必須)
+    -o <OUTPUT_FOLDER>  出力フォルダを指定 (省略可能、デフォルト: INPUT_FOLDER/conv)
+    -r <RESOLUTION>     横幅解像度を指定 (省略可能、デフォルト: 1280)
+                        HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
+    -b <BITRATE>        音声ビットレートを指定 (省略可能、デフォルト: 64000)
+                        使用可能な値: 192000, 160000, 128000, 96000, 80000, 64000
+    -s <SAMPLE_RATE>    音声サンプリングレートを指定 (省略可能、デフォルト: 16000)
+                        使用可能な値: 48000, 44100, 32000, 22050, 16000
+    -d                  変換後に元のファイルを削除 (省略可能)
+
+ex)
+    .\convert-to-lite-mp4 -i "C:\Videos" -o "C:\ConvertedVideos" -r 1920 -b 128000 -s 44100
+    .\convert-to-lite-mp4 -i "D:\My Videos" -d
 
 "@
 }
@@ -149,6 +160,24 @@ function Get-VideoCRF {
     } else {
         return 25
     }
+}
+
+
+# 音声レベルを分析して必要な音量増幅率を取得する
+function Get-AudioGain {
+    param(
+        [string]$file
+    )
+    
+    $analysis = ffprobe -v error -af volumedetect -f null $file 2>&1
+    $m = ($analysis | Select-String "max_volume: ([-\d.]+)").Matches
+    $maxVolume = 0
+    if ($m.Count -gt 0) {
+        $m[0].Groups[1].Value
+    }
+    
+    # 目標値を-0.5dBとして必要なゲインを計算
+    return [math]::Max(-0.5 - [double]$maxVolume, 0)
 }
 
 
@@ -263,10 +292,14 @@ $files | ForEach-Object {
     $audioSampleRate = (ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 $input)
     $audioSampleRate = if ([int]$audioSampleRate -gt $audioSampleRateThreshold) { "${audioSampleRateThreshold}" } else { $audioSampleRate }
     
+    # 音量増幅率を取得
+    $audioGain = Get-AudioGain -file $input
+
     Write-Host "変換中 (${currentFile}/${totalFiles}) / ""$($_.Name)"""
     $ffmpegArgs = @(
         if (${GPU_ACCEL} -ne "") { "-hwaccel", $GPU_ACCEL }
         "-i", "`"$input`""
+        "-map_metadata", "0"
         "-vf", $scaleFilter
         "-c:v", $VIDEO_CODEC
         "-maxrate", $videoBitrateInfo.Bitrate
@@ -274,6 +307,7 @@ $files | ForEach-Object {
         "-preset", $VIDEO_PRESET
         if (${GPU_ACCEL} -ne "") { "-crf", $videoCrf }
         "-c:a", $AUDIO_CODEC
+        "-af", "volume=${audioGain}dB"
         "-b:a", $audioBitrate
         "-ar", $audioSampleRate
         "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
