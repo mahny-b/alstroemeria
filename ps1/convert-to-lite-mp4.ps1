@@ -21,7 +21,7 @@
 
 .PARAMETER s
     サンプリングレート（accで使えるものは以下の通り）
-    48000, 44100, 32000, 22050, 16000
+    48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000
 
 .PARAMETER o
     出力フォルダ（相対パス or 絶対パス。存在しない場合は新規に作成する。未指定時は、入力フォルダ直下に「conv」を作成する）
@@ -39,6 +39,7 @@ param (
     [switch]$d
 )
 
+. $PSScriptRoot\dtos\FfprobeDto.ps1
 
 #----------------------------
 # 変換設定の定数
@@ -118,24 +119,24 @@ ex)
 # 解像度に応じたビットレート取得する
 function Get-VideoBitrate {
     param (
-        [int]$width,
-        [int]$height
+        [int]$scale,
+        [FfprobeDto]$mediaDto
     )
-    $pixels = $width * $height
+
+    $pixels = $scale * ($mediaDto.Video.Height / $mediaDto.Video.Width)
     $bitrate = switch ($pixels) {
-        {$_ -ge 3840 * 2160} { "16M"; break } # 4K
-        {$_ -ge 2560 * 1440} { "10M"; break } # 2K
-        {$_ -ge 1920 * 1080} { "6M"; break }  # Full HD
-        {$_ -ge 1280 * 720}  { "4M"; break }  # HD
-        default { "2M" }                      # SD以下
-    }
-    
-    if ($bitrate -notmatch '^\d+M$') {
-        throw "Invalid bitrate format: $bitrate"
+        {$_ -ge 3840 * 2160} { 1000 * 1000 * 12; break }    # 4K
+        {$_ -ge 2560 * 1440} { 1000 * 1000 * 8; break }     # 2K
+        {$_ -ge 1920 * 1080} { 1000 * 1000 * 5; break }     # Full HD
+        {$_ -ge 1280 * 720}  { 1000 * 1000 * 3; break }     # HD
+        default { 1000 * 1000 * 2 }                         # SD以下
     }
 
-    $bitrateValue = [int]($bitrate.TrimEnd('M'))
-    $bufsize = "$([Math]::Round($bitrateValue * 2))M"
+    if ((0 -lt $mediaDto.Video.BitRate) -and ($mediaDto.Video.BitRate -lt $bitrate)) {
+        $bitrate = [Math]::Floor($mediaDto.Video.BitRate / 8000) * 8000
+    }
+
+    $bufsize = $([Math]::Round($bitrate * 2))
 
     return [PSCustomObject]@{
         Bitrate = $bitrate
@@ -147,37 +148,21 @@ function Get-VideoBitrate {
 # 解像度からCRFを取得する
 function Get-VideoCRF {
     param (
-        [int]$width,
-        [int]$height
+        [int]$scale,
+        [FfprobeDto]$mediaDto
     )
     
-    $pixels = $width * $height
+    $pixels = $scale * ($mediaDto.Video.Height / $mediaDto.Video.Width)
     
-    if ($pixels -ge 2073600) {  # 1920x1080以上
-        return 27
-    } elseif ($pixels -ge 921600) {  # 1280x720以上
-        return 26
-    } else {
-        return 25
+    $crf = switch ($pixels) {
+        {$_ -ge 3840 * 2160} { 26; break }
+        {$_ -ge 2560 * 1440} { 24; break }
+        {$_ -ge 1920 * 1080} { 22; break }
+        {$_ -ge 1280 * 720}  { 20; break }
+        default { 18 }
     }
-}
 
-
-# 音声レベルを分析して必要な音量増幅率を取得する
-function Get-AudioGain {
-    param(
-        [string]$file
-    )
-    
-    $analysis = ffprobe -v error -af volumedetect -f null $file 2>&1
-    $m = ($analysis | Select-String "max_volume: ([-\d.]+)").Matches
-    $maxVolume = 0
-    if ($m.Count -gt 0) {
-        $m[0].Groups[1].Value
-    }
-    
-    # 目標値を-0.5dBとして必要なゲインを計算
-    return [math]::Max(-0.5 - [double]$maxVolume, 0)
+    return $crf
 }
 
 
@@ -271,29 +256,50 @@ $files | ForEach-Object {
     $currentFile++
     $input = $_.FullName
     $output = Join-Path $outputFolder $_.Name
-    
-    $videoInfo = ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 $input
-    $width, $height = $videoInfo.Split(',')
 
-    # スケールフィルターの設定
-    $scaleFilter = if ([int]$width -lt [int]$height) {
+    $mediaDto = [FfprobeDto]::new($input)
+    Write-Host "------------------------------"
+    Write-Host $mediaDto.ToString()
+    Write-Host "------------------------------"
+
+    # スケールフィルターの設定（回転チェック）
+    $scaleFilter = if ([int]$mediaDto.Video.Width -lt [int]$mediaDto.Video.Height) {
         "transpose=2,scale=${videoScale}:-2"
     } else {
         "scale=${videoScale}:-2"
     }
+    # 色情報が含まれない場合は、固定値を補う
+    $isColorSpaceUnknown = ($mediaDto.Video.ColorSpace -eq "") -or ($mediaDto.Video.ColorRange -eq "")
+    if ($isColorSpaceUnknown) {
+        $scaleFilter += ",format=yuv420p"
+    }
 
-    $audioRate = (ffprobe -v error -select_streams a:0 -show_entries stream=bit_rate -of default=noprint_wrappers=1:nokey=1 $input)
-    $audioBitrate = if ([int]$audioRate -ge $audioBitrateThreshold) { $audioBitrateTarget } else { $audioRate }
-    
+    # 音声ビットレートの取得
+    $audioBitrate = if ([int]$mediaDto.Audio.BitRate -ge $audioBitrateThreshold) {
+        $audioBitrateTarget
+    } else {
+        [Math]::Floor($mediaDto.Audio.BitRate / 8000) * 8000
+    }
+
     # ビデオビットレートの取得
-    $videoBitrateInfo = Get-VideoBitrate -width $width -height $height
-    $videoCrf = Get-VideoCRF -width $width -height $height
+    $videoBitrateInfo = Get-VideoBitrate -scale $videoScale -mediaDto $mediaDto
+    $videoCrf = Get-VideoCRF -scale $videoScale -mediaDto $mediaDto
 
-    $audioSampleRate = (ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 $input)
-    $audioSampleRate = if ([int]$audioSampleRate -gt $audioSampleRateThreshold) { "${audioSampleRateThreshold}" } else { $audioSampleRate }
-    
+    # 音声サンプリングレートの取得
+    $audioSampleRate = $audioSampleRateThreshold
+    if ((0 -lt $mediaDto.Audio.SampleRate) -and ($mediaDto.Audio.SampleRate -lt $audioSampleRate)) {
+        $sampleRates = @(48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000)
+
+        # $mediaDto.Audio.SampleRate 以下の最も近い値を取得する。最後まで見つからない場合は最低値のまま使う
+        for ($i = 0; $i -lt $sampleRates.Count; $i++) {
+            if ($mediaDto.Audio.SampleRate -ge $sampleRates[$i]) {
+                $audioSampleRate = $sampleRates[$i]
+            }
+        }
+    }
+
     # 音量増幅率を取得
-    $audioGain = Get-AudioGain -file $input
+    $audioGain = [math]::Max(-0.5 - $mediaDto.Audio.MaxVolume, 0)
 
     Write-Host "変換中 (${currentFile}/${totalFiles}) / ""$($_.Name)"""
     $ffmpegArgs = @(
@@ -310,6 +316,7 @@ $files | ForEach-Object {
         "-af", "volume=${audioGain}dB"
         "-b:a", $audioBitrate
         "-ar", $audioSampleRate
+        "-b:v", $videoBitrateInfo.Bitrate
         "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
     )
 
