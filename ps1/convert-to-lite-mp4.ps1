@@ -300,25 +300,45 @@ $files | ForEach-Object {
 
     # 音量増幅率を取得
     $audioGain = [math]::Max(-0.5 - $mediaDto.Audio.MaxVolume, 0)
-
     Write-Host "変換中 (${currentFile}/${totalFiles}) / ""$($_.Name)"""
-    $ffmpegArgs = @(
-        if (${GPU_ACCEL} -ne "") { "-hwaccel", $GPU_ACCEL }
-        "-i", "`"$input`""
-        "-map_metadata", "0"
-        "-vf", $scaleFilter
-        "-c:v", $VIDEO_CODEC
-        "-maxrate", $videoBitrateInfo.Bitrate
-        "-bufsize", $videoBitrateInfo.Bufsize
-        "-preset", $VIDEO_PRESET
-        if (${GPU_ACCEL} -ne "") { "-crf", $videoCrf }
-        "-c:a", $AUDIO_CODEC
-        "-af", "volume=${audioGain}dB"
-        "-b:a", $audioBitrate
-        "-ar", $audioSampleRate
-        "-b:v", $videoBitrateInfo.Bitrate
-        "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
-    )
+
+    if ($mediaDto.IsAV1() -and ("${GPU_ACCEL}" -ne "")) {
+        # AV1かつハードウェアエンコード設定の場合: CPUエンコード（libx264）に切り替え
+        $ffmpegArgs = @(
+            "-i", "`"$input`""
+            "-map_metadata", "0"
+            "-vf", $scaleFilter
+            "-c:v", "libx264"
+            "-maxrate", $videoBitrateInfo.Bitrate
+            "-bufsize", $videoBitrateInfo.Bufsize
+            "-preset", "veryslow"
+            "-c:a", $AUDIO_CODEC
+            "-af", "volume=${audioGain}dB"
+            "-b:a", $audioBitrate
+            "-ar", $audioSampleRate
+            "-b:v", $videoBitrateInfo.Bitrate
+            "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
+        )
+    } else {
+        # それ以外: 元の設定（GPUまたはCPU）を維持
+        $ffmpegArgs = @(
+            if ("${GPU_ACCEL}" -ne "" -and 0 -lt $mediaDto.Video.BitRate) { "-hwaccel", "$GPU_ACCEL" }
+            "-i", "`"$input`""
+            "-map_metadata", "0"
+            "-vf", $scaleFilter
+            "-c:v", $VIDEO_CODEC
+            "-maxrate", $videoBitrateInfo.Bitrate
+            "-bufsize", $videoBitrateInfo.Bufsize
+            "-preset", $VIDEO_PRESET
+            if ("${GPU_ACCEL}" -ne "" -and 0 -lt $mediaDto.Video.BitRate) { "-crf", $videoCrf }
+            "-c:a", $AUDIO_CODEC
+            "-af", "volume=${audioGain}dB"
+            "-b:a", $audioBitrate
+            "-ar", $audioSampleRate
+            "-b:v", $videoBitrateInfo.Bitrate
+            "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
+        )
+    }
 
     $processArgs = @{
         FilePath = "ffmpeg"
@@ -329,7 +349,7 @@ $files | ForEach-Object {
     }
 
     # 変換処理実行
-    Write-Host "command. / $ffmpegPath $($ffmpegArgs -join ' ')"
+    Write-Host "ffmpeg options. / $($ffmpegArgs -join ' ')"
     $process = Start-Process @processArgs
 
     if ($process.ExitCode -ne 0) {
