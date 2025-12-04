@@ -57,13 +57,16 @@ $GPU_ACCEL = "cuda"
 
 # ビデオコーデック
 # CPU:libx264, nVIDIA:h264_nvenc, AMD:h264_amf, Intel:h264_qsv
+# CPU:libx265, nVIDIA:hevc_nvenc, AMD:hevc_amf, Intel:hevc_qsv
 # $VIDEO_CODEC = "libx264"
-$VIDEO_CODEC = "h264_nvenc"
+$VIDEO_CODEC = "hevc_nvenc"
 
 # 汎用で指定できるプリセット: (エンコ速度重視⇐) fast,medium,slow,veryslow （⇒ファイルサイズ重視）
-# nDIVIA専用プリセット: default, hp(高速縁故), hq(高品質), bd(非推奨), ll(非推奨), llhp(非推奨), llhq(非推奨), lossless(非推奨), losslesshq(非推奨)
+# nDIVIA専用プリセット（264系）: default, hp(高速エンコ), hq(高品質)
+# nDIVIA専用プリセット（265系）: p1（高速）, …, p4（標準品質）, …, p6(旧hq相当), p7(高品質)
+# nDIVIA 265系チューニングオプション: p[1-7] -tune [lossless|hq|ll|ull]
 # $VIDEO_PRESET = "veryslow"
-$VIDEO_PRESET = "hq"
+$VIDEO_PRESET = "p6 -tune hq"
 
 # 音声コーデック
 $AUDIO_CODEC = "aac"
@@ -311,7 +314,7 @@ $files | ForEach-Object {
             "-c:v", "libx264"
             "-maxrate", $videoBitrateInfo.Bitrate
             "-bufsize", $videoBitrateInfo.Bufsize
-            "-preset", "veryslow"
+            "-preset", "slow"
             "-c:a", $AUDIO_CODEC
             "-af", "volume=${audioGain}dB"
             "-b:a", $audioBitrate
