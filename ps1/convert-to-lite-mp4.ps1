@@ -15,12 +15,16 @@
     横幅解像度（初期値1280）
     HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
 
-.PARAMETER b
-    ビットレート（accで使えるものは以下の通り）
+.PARAMETER vb
+    ビデオビットレート
     192000, 160000, 128000, 96000, 80000, 64000
 
-.PARAMETER s
-    サンプリングレート（accで使えるものは以下の通り）
+.PARAMETER ab
+    音声ビットレート（accで使えるものは以下の通り）
+    192000, 160000, 128000, 96000, 80000, 64000
+
+.PARAMETER as
+    音声サンプリングレート（accで使えるものは以下の通り）
     48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000
 
 .PARAMETER o
@@ -33,8 +37,9 @@
 param (
     [string]$i,
     [int]$r = 1280,
-    [int]$b = 64000,
-    [int]$s = 16000,
+    [int]$vb = -1,
+    [int]$ab = 64000,
+    [int]$as = 16000,
     [string]$o,
     [switch]$d
 )
@@ -78,15 +83,18 @@ $AUDIO_CODEC = "aac"
 # ビデオスケール（変換後の動画横幅）
 $videoScale = $r
 
+# ビデオビットレート
+$videoBitrateThreshold = $vb
+
 # mahnyはバカ耳なので低音質設定です。我慢できない人は適宜上げてください。
 # ビットレート
 # 192000, 160000, 128000, 96000, 80000, 64000
-$audioBitrateThreshold = $b
+$audioBitrateThreshold = $ab
 $audioBitrateTarget = "$([Math]::Floor(${audioBitrateThreshold} / 1000))k"
 
 # サンプリングレート
 # 48000, 44100, 32000, 22050, 16000
-$audioSampleRateThreshold = $s
+$audioSampleRateThreshold = $as
 
 #----------------------------
 # 関数定義
@@ -101,18 +109,19 @@ usage)
     convert-to-lite-mp4 [オプション]
 
 options)
-    -i <INPUT_FOLDER>   入力フォルダを指定 (必須)
-    -o <OUTPUT_FOLDER>  出力フォルダを指定 (省略可能、デフォルト: INPUT_FOLDER/conv)
-    -r <RESOLUTION>     横幅解像度を指定 (省略可能、デフォルト: 1280)
-                        HD:1280, HD+:1600, FHD:1920, 2K:2560, 4K:3840
-    -b <BITRATE>        音声ビットレートを指定 (省略可能、デフォルト: 64000)
-                        使用可能な値: 192000, 160000, 128000, 96000, 80000, 64000
-    -s <SAMPLE_RATE>    音声サンプリングレートを指定 (省略可能、デフォルト: 16000)
-                        使用可能な値: 48000, 44100, 32000, 22050, 16000
-    -d                  変換後に元のファイルを削除 (省略可能)
+    -i <INPUT_FOLDER>       入力フォルダを指定 (必須)
+    -o <OUTPUT_FOLDER>      出力フォルダを指定 (省略可能、デフォルト: INPUT_FOLDER/conv)
+    -r <RESOLUTION>         横幅解像度を指定 (省略可能、デフォルト: 1280)
+                            4K:3840, 2K:2560, FHD:1920, HD+:1600, HD:1280, SD:720
+    -vb <VIDEO_BITRATE>     ビデオビットレートを指定 (省略可能、デフォルト: 解像度に応じて自動設定)
+    -ab <AUDIO_BITRATE>     音声ビットレートを指定 (省略可能、デフォルト: 64000)
+                            よく使われる値: 192000, 160000, 128000, 96000, 80000, 64000
+    -as <AUDIO_SAMPLE_RATE> 音声サンプリングレートを指定 (省略可能、デフォルト: 16000)
+                            使用可能な値: 48000, 44100, 32000, 22050, 16000
+    -d                      変換後に元のファイルを削除 (省略可能)
 
 ex)
-    .\convert-to-lite-mp4 -i "C:\Videos" -o "C:\ConvertedVideos" -r 1920 -b 128000 -s 44100
+    .\convert-to-lite-mp4 -i "C:\Videos" -o "C:\ConvertedVideos" -r 1920 -vb 2560000 -ab 96000 -as 22050
     .\convert-to-lite-mp4 -i "D:\My Videos" -d
 
 "@
@@ -127,12 +136,19 @@ function Get-VideoBitrate {
     )
 
     $pixels = $scale * ($mediaDto.Video.Height / $mediaDto.Video.Width)
-    $bitrate = switch ($pixels) {
-        {$_ -ge 3840 * 2160} { 1000 * 1000 * 12; break }    # 4K
-        {$_ -ge 2560 * 1440} { 1000 * 1000 * 8; break }     # 2K
-        {$_ -ge 1920 * 1080} { 1000 * 1000 * 5; break }     # Full HD
-        {$_ -ge 1280 * 720}  { 1000 * 1000 * 3; break }     # HD
-        default { 1000 * 1000 * 2 }                         # SD以下
+
+    # ビットレート指定がある場合はそれを使い、無い場合は自動で補完する
+    $bitrate = -1
+    if (0 -lt $videoBitrateThreshold) {
+        $bitrate = $videoBitrateThreshold
+    } else {
+        $bitrate = switch ($pixels) {
+            {$_ -ge 3840 * 2160} { 1000 * 1000 * 15; break }    # 4K
+            {$_ -ge 2560 * 1440} { 1000 * 1000 * 10; break }    # 2K
+            {$_ -ge 1920 * 1080} { 1000 * 1000 * 7; break }     # Full HD
+            {$_ -ge 1280 * 720}  { 1000 * 1000 * 5; break }     # HD
+            default { 1000 * 1000 * 3 }                         # SD以下
+        }
     }
 
     if ((0 -lt $mediaDto.Video.BitRate) -and ($mediaDto.Video.BitRate -lt $bitrate)) {
@@ -158,11 +174,11 @@ function Get-VideoCRF {
     $pixels = $scale * ($mediaDto.Video.Height / $mediaDto.Video.Width)
     
     $crf = switch ($pixels) {
-        {$_ -ge 3840 * 2160} { 26; break }
-        {$_ -ge 2560 * 1440} { 24; break }
-        {$_ -ge 1920 * 1080} { 22; break }
-        {$_ -ge 1280 * 720}  { 20; break }
-        default { 18 }
+        {$_ -ge 3840 * 2160} { 23; break }
+        {$_ -ge 2560 * 1440} { 21; break }
+        {$_ -ge 1920 * 1080} { 19; break }
+        {$_ -ge 1280 * 720}  { 17; break }
+        default { 15 }
     }
 
     return $crf
@@ -294,9 +310,9 @@ $files | ForEach-Object {
         $sampleRates = @(48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000)
 
         # $mediaDto.Audio.SampleRate 以下の最も近い値を取得する。最後まで見つからない場合は最低値のまま使う
-        for ($i = 0; $i -lt $sampleRates.Count; $i++) {
-            if ($mediaDto.Audio.SampleRate -ge $sampleRates[$i]) {
-                $audioSampleRate = $sampleRates[$i]
+        for ($idx = 0; $idx -lt $sampleRates.Count; $idx++) {
+            if ($mediaDto.Audio.SampleRate -ge $sampleRates[$idx]) {
+                $audioSampleRate = $sampleRates[$idx]
             }
         }
     }
@@ -305,44 +321,58 @@ $files | ForEach-Object {
     $audioGain = [math]::Max(-0.5 - $mediaDto.Audio.MaxVolume, 0)
     Write-Host "変換中 (${currentFile}/${totalFiles}) / ""$($_.Name)"""
 
-    if ($mediaDto.IsAV1() -and ("${GPU_ACCEL}" -ne "")) {
-        # AV1かつハードウェアエンコード設定の場合: CPUエンコード（libx264）に切り替え
-        $ffmpegArgs = @(
-            "-i", "`"$input`""
-            "-map_metadata", "0"
-            "-vf", $scaleFilter
-            "-c:v", "libx264"
-            "-maxrate", $videoBitrateInfo.Bitrate
-            "-bufsize", $videoBitrateInfo.Bufsize
-            "-preset", "slow"
-            "-c:a", $AUDIO_CODEC
-            "-af", "volume=${audioGain}dB"
-            "-b:a", $audioBitrate
-            "-ar", $audioSampleRate
-            "-b:v", $videoBitrateInfo.Bitrate
-            "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
-        )
+    $isBitrateMode = ($videoBitrateThreshold -gt 0)
+    if ($isBitrateMode) {
+        Write-Host "モード: ビットレート固定/上限 (${videoBitrateInfo.Bitrate} bps)"
     } else {
-        # それ以外: 元の設定（GPUまたはCPU）を維持
-        $ffmpegArgs = @(
-            if ("${GPU_ACCEL}" -ne "" -and 0 -lt $mediaDto.Video.BitRate) { "-hwaccel", "$GPU_ACCEL" }
-            "-i", "`"$input`""
-            "-map_metadata", "0"
-            "-vf", $scaleFilter
-            "-c:v", $VIDEO_CODEC
-            "-maxrate", $videoBitrateInfo.Bitrate
-            "-bufsize", $videoBitrateInfo.Bufsize
-            "-preset", $VIDEO_PRESET
-            if ("${GPU_ACCEL}" -ne "" -and 0 -lt $mediaDto.Video.BitRate) { "-crf", $videoCrf }
-            "-c:a", $AUDIO_CODEC
-            "-af", "volume=${audioGain}dB"
-            "-b:a", $audioBitrate
-            "-ar", $audioSampleRate
-            "-b:v", $videoBitrateInfo.Bitrate
-            "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
-        )
+        Write-Host "モード: CRFハイブリッド (CRF: ${videoCrf}, MaxBitrate: ${videoBitrateInfo.Bitrate} bps)"
     }
 
+    $commonArgs = @(
+        if ("${GPU_ACCEL}" -ne "" -and 0 -lt $mediaDto.Video.BitRate) { "-hwaccel", "$GPU_ACCEL" }
+        "-i", "`"$input`""
+        "-map_metadata", "0"
+        "-vf", $scaleFilter
+        
+        "-maxrate", $videoBitrateInfo.Bitrate
+        "-bufsize", $videoBitrateInfo.Bufsize
+        
+        "-c:a", $AUDIO_CODEC
+        "-af", "volume=${audioGain}dB"
+        "-b:a", $audioBitrate
+        "-ar", $audioSampleRate
+        "-y", "`"${outputFolder}\$($_.BaseName).${OUTPUT_FORMAT}`""
+    )
+
+    # エンコード方式の決定
+    if ($mediaDto.IsAV1() -and ("${GPU_ACCEL}" -ne "")) {
+        # AV1かつHWエンコード設定の場合: CPUエンコード（libx264）に切り替え
+        $videoCodecFinal = "libx264"
+        $videoPresetFinal = "slow" # libx264のプリセット
+    } else {
+        # それ以外: 元の設定（GPUまたはCPU）を維持
+        $videoCodecFinal = $VIDEO_CODEC
+        $videoPresetFinal = $VIDEO_PRESET
+    }
+        
+    # === エンコードオプションの組み立て (CRF/VBの分岐) ===
+    $bitrateOrCrfArgs = if ($isBitrateMode) {
+        # ビットレート固定モード: -b:v を使用 (ファイルサイズ優先)
+        @("-b:v", $videoBitrateInfo.Bitrate)
+    } else {
+        # CRFハイブリッドモード: -crf を使用 (品質優先)
+        @("-crf", $videoCrf)
+    }
+
+    # 最終的な引数を結合
+    $ffmpegArgs = @(
+        $commonArgs
+        "-c:v", $videoCodecFinal
+        "-preset", $videoPresetFinal
+        $bitrateOrCrfArgs
+    )
+
+    # プロセス監視用引数
     $processArgs = @{
         FilePath = "ffmpeg"
         ArgumentList = $ffmpegArgs
@@ -355,17 +385,16 @@ $files | ForEach-Object {
     Write-Host "ffmpeg options. / $($ffmpegArgs -join ' ')"
     $process = Start-Process @processArgs
 
-    if ($process.ExitCode -ne 0) {
+    $process | Wait-Process | Out-Null
+    $ffmpegExitCode = $process.ExitCode
+
+    if ($ffmpegExitCode -ne 0) {
         Write-Error "変換に失敗しました / ""$($_.Name)"""
         exit 1
     }
 
     Write-Host "変換が成功しました / ""$($_.Name)"""
     if ($d) {
-        if (-not (Stop-FfmpegProcess -ProcessId $process.Id)) {
-            Write-Error "ffmpegプロセスの終了に失敗しました: file=[""$($_.Name)""], pid=[$($process.Id)]"
-            exit 1
-        }
         if (-not (Remove-ConvertedVideo -file $input)) {
             Write-Error "ファイルの削除に失敗しました: ""$($_.Name)"""
             exit 1
