@@ -64,6 +64,7 @@ $GPU_ACCEL = "cuda"
 # CPU:libx264, nVIDIA:h264_nvenc, AMD:h264_amf, Intel:h264_qsv
 # CPU:libx265, nVIDIA:hevc_nvenc, AMD:hevc_amf, Intel:hevc_qsv
 # $VIDEO_CODEC = "libx264"
+# $VIDEO_CODEC = "libx265"
 $VIDEO_CODEC = "hevc_nvenc"
 
 # 汎用で指定できるプリセット: (エンコ速度重視⇐) fast,medium,slow,veryslow （⇒ファイルサイズ重視）
